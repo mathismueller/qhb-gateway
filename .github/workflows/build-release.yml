@@ -24,7 +24,7 @@ jobs:
         with:
           path: |
             dl
-            ~/.buildroot-ccache
+            .ccache
           key: qhb-br2-2025.02.18-${{ hashFiles('configs/qhb_defconfig', 'package/**') }}
           restore-keys: |
             qhb-br2-2025.02.18-
@@ -35,6 +35,7 @@ jobs:
       - name: Build qhb_defconfig
         env:
           BR2_CCACHE: "y"
+          BR2_CCACHE_DIR: "${{ github.workspace }}/.ccache"
         run: ./scripts/build.sh
 
       - name: Upload rootfs artifacts

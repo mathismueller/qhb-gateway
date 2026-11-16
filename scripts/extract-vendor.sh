@@ -60,22 +60,36 @@ fi
 # Isolated vendor uClibc 0.9.32 runtime island in /lib/vendor
 for lib in ld-uClibc-0.9.32.1-git.so libuClibc-0.9.32.1-git.so libdl-0.9.32.1-git.so \
            libgcc_s.so.1 libmsgapi.so libcfmapi.so liblgplutil.so libbhalapi.so libflashapi.so; do
-    [ -f "$INITRAMFS_DIR/lib/$lib" ] && cp "$INITRAMFS_DIR/lib/$lib" "$OUT_DIR/lib/vendor/" || true
+    if [ -f "$INITRAMFS_DIR/lib/$lib" ]; then
+        cp "$INITRAMFS_DIR/lib/$lib" "$OUT_DIR/lib/vendor/"
+    fi
 done
 
 if [ -f "$OUT_DIR/lib/vendor/ld-uClibc-0.9.32.1-git.so" ]; then
     ln -sf ld-uClibc-0.9.32.1-git.so "$OUT_DIR/lib/vendor/ld-uClibc.so.0"
     ln -sf ld-uClibc-0.9.32.1-git.so "$OUT_DIR/lib/vendor/ld.so"
-    [ -f "$OUT_DIR/lib/vendor/libuClibc-0.9.32.1-git.so" ] && ln -sf libuClibc-0.9.32.1-git.so "$OUT_DIR/lib/vendor/libc.so.0"
-    [ -f "$OUT_DIR/lib/vendor/libdl-0.9.32.1-git.so" ] && ln -sf libdl-0.9.32.1-git.so "$OUT_DIR/lib/vendor/libdl.so.0"
+    if [ -f "$OUT_DIR/lib/vendor/libuClibc-0.9.32.1-git.so" ]; then
+        ln -sf libuClibc-0.9.32.1-git.so "$OUT_DIR/lib/vendor/libc.so.0"
+    fi
+    if [ -f "$OUT_DIR/lib/vendor/libdl-0.9.32.1-git.so" ]; then
+        ln -sf libdl-0.9.32.1-git.so "$OUT_DIR/lib/vendor/libdl.so.0"
+    fi
 fi
 
 # Vendor CLI tools & DECT firmware
 for bin in hi_cli hi_xpon ethcmd; do
-    [ -f "$MTD0_DIR/bin/$bin" ] && cp "$MTD0_DIR/bin/$bin" "$OUT_DIR/bin/"
+    if [ -f "$MTD0_DIR/bin/$bin" ]; then
+        cp "$MTD0_DIR/bin/$bin" "$OUT_DIR/bin/"
+    fi
 done
-[ -d "$MTD0_DIR/home/cli" ] && cp -r "$MTD0_DIR/home/cli" "$OUT_DIR/home/"
-[ -f "$MTD0_DIR/etc/dectimage.bin" ] && cp "$MTD0_DIR/etc/dectimage.bin" "$OUT_DIR/etc/"
-[ -f "$MTD0_DIR/bin/voiper" ] && cp "$MTD0_DIR/bin/voiper" "$OUT_DIR/bin/voiper.real"
+if [ -d "$MTD0_DIR/home/cli" ]; then
+    cp -r "$MTD0_DIR/home/cli" "$OUT_DIR/home/"
+fi
+if [ -f "$MTD0_DIR/etc/dectimage.bin" ]; then
+    cp "$MTD0_DIR/etc/dectimage.bin" "$OUT_DIR/etc/"
+fi
+if [ -f "$MTD0_DIR/bin/voiper" ]; then
+    cp "$MTD0_DIR/bin/voiper" "$OUT_DIR/bin/voiper.real"
+fi
 
 echo "[qhb] Vendor overlay staged at $OUT_DIR"
