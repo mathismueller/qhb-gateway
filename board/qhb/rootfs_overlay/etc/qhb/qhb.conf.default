@@ -1,0 +1,30 @@
+# QHB Gateway declarative configuration (/data/qhb.conf)
+# Edit this file on the persistent /data UBIFS partition and reboot (or restart services).
+
+QHB_HOSTNAME="qhb"
+
+# Networking: "dhcp" or "static"
+QHB_NET_MODE="dhcp"
+QHB_STATIC_IP="192.168.0.5/24"
+QHB_STATIC_GW="192.168.0.1"
+QHB_STATIC_DNS="192.168.0.1"
+
+# Radio bridge ports
+QHB_ZIGBEE_ENABLE=1
+QHB_ZIGBEE_PORT=2002
+
+QHB_HMIP_ENABLE=1
+QHB_HMIP_PORT=3008
+
+QHB_BT_ENABLE=1
+QHB_BT_PORT=6053
+
+# DECT ULE (MQTT + Home Assistant Discovery)
+QHB_DECT_ENABLE=1
+QHB_MQTT_HOST=""
+QHB_MQTT_PORT=1883
+QHB_MQTT_USER=""
+QHB_MQTT_PASS=""
+
+# Optional Wi-Fi (disabled by default for wired bridge operation)
+QHB_WIFI_ENABLE=0

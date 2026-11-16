@@ -1,0 +1,47 @@
+name: Build & Release
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  buildroot:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Buildroot dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            bc bison build-essential cpio curl file flex g++ gcc \
+            git libncurses-dev libssl-dev make patch rsync unzip wget xz-utils
+
+      - name: Cache Buildroot downloads & ccache
+        uses: actions/cache@v4
+        with:
+          path: |
+            dl
+            ~/.buildroot-ccache
+          key: qhb-br2-2025.02.18-${{ hashFiles('configs/qhb_defconfig', 'package/**') }}
+          restore-keys: |
+            qhb-br2-2025.02.18-
+
+      - name: Fetch Buildroot 2025.02.18
+        run: ./scripts/fetch-buildroot.sh
+
+      - name: Build qhb_defconfig
+        env:
+          BR2_CCACHE: "y"
+        run: ./scripts/build.sh
+
+      - name: Upload rootfs artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: qhb-rootfs-${{ github.ref_name }}
+          path: |
+            output/images/rootfs.cpio.xz
+            output/images/rootfs.tar.gz
+            output/images/SHA256SUMS

@@ -1,0 +1,4 @@
+# BusyBox bridge control for br0 (eth0 + nas1)
+CONFIG_BRCTL=y
+CONFIG_FEATURE_BRCTL_FANCY=y
+CONFIG_FEATURE_BRCTL_SHOW=y

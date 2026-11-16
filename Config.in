@@ -1,0 +1,6 @@
+menu "QHB Gateway"
+	source "$BR2_EXTERNAL_QHB_GATEWAY_PATH/package/qhb-zigbeed/Config.in"
+	source "$BR2_EXTERNAL_QHB_GATEWAY_PATH/package/qhb-btproxy/Config.in"
+	source "$BR2_EXTERNAL_QHB_GATEWAY_PATH/package/qhb-dectd/Config.in"
+	source "$BR2_EXTERNAL_QHB_GATEWAY_PATH/package/qhb-rfe-daemon/Config.in"
+endmenu

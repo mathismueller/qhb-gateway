@@ -1,0 +1,5 @@
+config BR2_PACKAGE_QHB_RFE_DAEMON
+	bool "qhb-rfe-daemon"
+	help
+	  HB-RF-ETH compatible TCP bridge for the HomeMatic / HmIP
+	  radio module on the Telekom Qivicon Home Base 2.

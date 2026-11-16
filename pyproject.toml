@@ -1,0 +1,7 @@
+[project]
+name = "qhb-gateway"
+version = "0.1.0"
+description = "Buildroot BR2_EXTERNAL firmware and tooling for the Telekom Qivicon Home Base 2"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []

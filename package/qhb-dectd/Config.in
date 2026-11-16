@@ -1,0 +1,5 @@
+config BR2_PACKAGE_QHB_DECTD
+	bool "qhb-dectd"
+	help
+	  DECT ULE / HAN-FUN MQTT bridge and Home Assistant Discovery
+	  daemon for the Telekom Qivicon Home Base 2.

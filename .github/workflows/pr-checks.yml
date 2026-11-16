@@ -1,0 +1,41 @@
+name: PR Checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  lint-and-host-compile:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install host build & lint tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc make shellcheck
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: ShellCheck scripts & init scripts
+        run: |
+          shellcheck \
+            scripts/fetch-buildroot.sh \
+            scripts/build.sh \
+            scripts/extract-vendor.sh \
+            board/qhb/post-build.sh \
+            board/qhb/post-image.sh \
+            board/qhb/rootfs_overlay/etc/init.d/S10data-ubifs
+
+      - name: Python syntax check
+        run: uv run python -m py_compile scripts/hil-smoke-test.py
+
+      - name: Host-compile radio bridge daemons
+        run: |
+          mkdir -p /tmp/qhb-host-bin
+          gcc -O2 -Wall -Wextra src/qhb-zigbeed/hb2-zigbeed.c -o /tmp/qhb-host-bin/qhb-zigbeed
+          gcc -O2 -Wall -Wextra src/qhb-dectd/hb2_dectd.c -o /tmp/qhb-host-bin/qhb-dectd
+          gcc -O2 -Wall -Wextra src/qhb-rfe-daemon/hb2_rfe_daemon.c -o /tmp/qhb-host-bin/qhb-rfe-daemon
+          make -C src/qhb-btproxy CC=gcc STRIP=strip CFLAGS="-O2 -Wall -Wextra -std=gnu11 -Isrc -Isrc/include -pthread"
+          make -C src/qhb-btproxy clean

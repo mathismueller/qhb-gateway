@@ -1,0 +1,6 @@
+config BR2_PACKAGE_QHB_BTPROXY
+	bool "qhb-btproxy"
+	depends on BR2_TOOLCHAIN_HAS_THREADS
+	help
+	  ESPHome-compatible Bluetooth Proxy daemon for Home Assistant
+	  on the Telekom Qivicon Home Base 2 (RTL8761AUV).

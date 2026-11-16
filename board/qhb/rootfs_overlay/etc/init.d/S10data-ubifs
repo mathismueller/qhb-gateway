@@ -1,0 +1,56 @@
+#!/bin/sh
+# Mount persistent /data on mtd17 (UBIFS) with safe tmpfs fallback,
+# seed /data/qhb.conf, and link Dropbear SSH keys to /data/ssh.
+
+DATA_MTD_NAME="bundles"
+DATA_DIR="/data"
+DEFAULT_CONF="/etc/qhb/qhb.conf.default"
+
+find_mtd_index() {
+    awk -F: -v name="\"$1\"" '$0 ~ name {gsub(/mtd/, "", $1); print $1; exit}' /proc/mtd
+}
+
+start() {
+    mkdir -p "$DATA_DIR" /var/log /var/run
+
+    MTD_IDX="$(find_mtd_index "$DATA_MTD_NAME" || true)"
+    if [ -n "$MTD_IDX" ] && command -v ubiattach >/dev/null 2>&1; then
+        if ubiattach -m "$MTD_IDX" -d 0 >/dev/null 2>&1; then
+            if [ ! -e /dev/ubi0_0 ] && command -v ubimkvol >/dev/null 2>&1; then
+                ubimkvol /dev/ubi0 -N qhb_data -m >/dev/null 2>&1 || true
+            fi
+            if [ -e /dev/ubi0_0 ]; then
+                mount -t ubifs ubi0:qhb_data "$DATA_DIR" || \
+                    mount -t tmpfs -o size=16m tmpfs "$DATA_DIR"
+            else
+                mount -t tmpfs -o size=16m tmpfs "$DATA_DIR"
+            fi
+        else
+            mount -t tmpfs -o size=16m tmpfs "$DATA_DIR"
+        fi
+    else
+        mount -t tmpfs -o size=16m tmpfs "$DATA_DIR"
+    fi
+
+    mkdir -p "$DATA_DIR/ssh" "$DATA_DIR/pairing"
+    if [ ! -f "$DATA_DIR/qhb.conf" ] && [ -f "$DEFAULT_CONF" ]; then
+        cp "$DEFAULT_CONF" "$DATA_DIR/qhb.conf"
+    fi
+
+    # Persist Dropbear host keys across reboots
+    rm -rf /etc/dropbear
+    ln -s "$DATA_DIR/ssh" /etc/dropbear
+}
+
+case "${1:-start}" in
+    start)
+        start
+        ;;
+    stop)
+        umount "$DATA_DIR" 2>/dev/null || true
+        ;;
+    *)
+        echo "Usage: $0 {start|stop}"
+        exit 1
+        ;;
+esac

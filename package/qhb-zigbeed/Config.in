@@ -1,0 +1,5 @@
+config BR2_PACKAGE_QHB_ZIGBEED
+	bool "qhb-zigbeed"
+	help
+	  ASHv2 over TCP to EZSP-SPI bridge for the Silicon Labs EM3587
+	  Zigbee NCP on the Telekom Qivicon Home Base 2.
