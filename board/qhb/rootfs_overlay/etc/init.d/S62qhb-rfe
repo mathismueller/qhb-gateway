@@ -1,0 +1,35 @@
+#!/bin/sh
+# S62qhb-rfe: HB-RF-ETH daemon for HomeMatic / HmIP (UDP/TCP 3008)
+
+if [ -f /data/qhb.conf ]; then
+    # shellcheck source=/dev/null
+    . /data/qhb.conf
+fi
+[ "${QHB_HMIP_ENABLE:-1}" = "1" ] || exit 0
+
+DAEMON="/usr/sbin/qhb-rfe-daemon"
+PIDFILE="/var/run/qhb-rfe-daemon.pid"
+DEVNODE="/dev/ttyAMA1"
+PORT="${QHB_HMIP_PORT:-3008}"
+LOGFILE="/var/log/qhb-rfe-daemon.log"
+
+case "${1:-}" in
+    start)
+        [ -c "$DEVNODE" ] || exit 1
+        start-stop-daemon -S -b -m -p "$PIDFILE" --startas /bin/sh -- \
+            -c "exec $DAEMON -d $DEVNODE -b 115200 -p $PORT -v > $LOGFILE 2>&1"
+        ;;
+    stop)
+        start-stop-daemon -K -q -p "$PIDFILE" 2>/dev/null || true
+        rm -f "$PIDFILE"
+        ;;
+    restart)
+        "$0" stop
+        sleep 1
+        "$0" start
+        ;;
+    *)
+        echo "Usage: $0 {start|stop|restart}"
+        exit 1
+        ;;
+esac

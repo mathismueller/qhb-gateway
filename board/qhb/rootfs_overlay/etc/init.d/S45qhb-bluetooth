@@ -1,0 +1,41 @@
+#!/bin/sh
+# S45qhb-bluetooth: Realtek RTL8761AUV Bluetooth driver initialization
+
+if [ -f /data/qhb.conf ]; then
+    # shellcheck source=/dev/null
+    . /data/qhb.conf
+fi
+[ "${QHB_BT_ENABLE:-1}" = "1" ] || exit 0
+
+case "${1:-}" in
+    start)
+        echo "[qhb-bt] initializing RTL8761AUV..."
+        if [ ! -d /sys/class/bluetooth/hci0 ]; then
+            if [ -f /lib/extra/rtk_btusb.ko ]; then
+                insmod /lib/extra/rtk_btusb.ko
+            fi
+            for _ in 1 2 3 4 5; do
+                [ -d /sys/class/bluetooth/hci0 ] && break
+                sleep 1
+            done
+        fi
+        if [ -d /sys/class/bluetooth/hci0 ] && command -v hciconfig >/dev/null 2>&1; then
+            hciconfig hci0 up
+        fi
+        ;;
+    stop)
+        if command -v hciconfig >/dev/null 2>&1 && [ -d /sys/class/bluetooth/hci0 ]; then
+            hciconfig hci0 down
+        fi
+        rmmod rtk_btusb 2>/dev/null || true
+        ;;
+    restart)
+        "$0" stop
+        sleep 1
+        "$0" start
+        ;;
+    *)
+        echo "Usage: $0 {start|stop|restart}"
+        exit 1
+        ;;
+esac

@@ -1,0 +1,158 @@
+#!/bin/sh
+# S40qhb-net: HiSilicon switch, radio module & br0 network bringup
+
+# Load declarative config (/data/qhb.conf -> fallback /etc/qhb/qhb.conf.default)
+if [ -f /etc/qhb/qhb.conf.default ]; then
+    # shellcheck source=/dev/null
+    . /etc/qhb/qhb.conf.default
+fi
+if [ -f /data/qhb.conf ]; then
+    # shellcheck source=/dev/null
+    . /data/qhb.conf
+fi
+
+BOARD_IP="${QHB_STATIC_IP%%/*}"
+BOARD_IP="${BOARD_IP:-192.168.0.5}"
+BOARD_MAC="${QHB_MAC:-00:e0:fc:55:55:58}"
+QHB_NET_MODE="${QHB_NET_MODE:-dhcp}"
+QHB_HOSTNAME="${QHB_HOSTNAME:-qhb}"
+QHB_WIFI_ENABLE="${QHB_WIFI_ENABLE:-0}"
+
+case "${1:-}" in
+  start)
+    echo "[qhb-net] creating vendor character devices..."
+    mknod /dev/mem c 1 1 2>/dev/null || true
+    mknod /dev/hi_hlp c 10 19 2>/dev/null || true
+    mknod /dev/ipcdrv c 251 0 2>/dev/null || true
+    mknod /dev/hisec c 241 0 2>/dev/null || true
+    mknod /dev/hipwr c 242 0 2>/dev/null || true
+    mknod /dev/hi_voip_hlp c 10 21 2>/dev/null || true
+    mknod /dev/ttyspi0 c 220 0 2>/dev/null || true
+    mknod /dev/random c 1 8 2>/dev/null || true
+    mknod /dev/urandom c 1 9 2>/dev/null || true
+    chmod 666 /dev/random /dev/urandom 2>/dev/null || true
+    mknod /dev/ptmx c 5 2 2>/dev/null || true
+    chmod 666 /dev/ptmx 2>/dev/null || true
+
+    echo "[qhb-net] loading switch drivers..."
+    insmod /lib/extra/hi_kbasic.ko 2>/dev/null || true
+    insmod /lib/extra/hi_sdk_l0.ko 2>/dev/null || true
+    insmod /lib/extra/hi_sdk_l1.ko 2>/dev/null || true
+    hi_cli /home/cli/api/srv/set_flowrange -v srvname qos start 384 stop 511 2>/dev/null || true
+    hi_cli /home/cli/api/srv/set_flowrange -v srvname normal start 0 stop 383 2>/dev/null || true
+    insmod /lib/extra/hi_sdk_l2.ko 2>/dev/null || true
+
+    for mod in hi_kmisc hi_keth hi_kmdio hi_kphy hi_sdk_l0_dump hi_kcfe_res \
+               hi_kphy_mng_stub hi_kport hi_kgpio; do
+        insmod "/lib/extra/$mod.ko" 2>/dev/null || true
+    done
+    if [ -x /bin/qhb_portinit ]; then
+        /bin/qhb_portinit
+    fi
+
+    # Load Zigbee SPI driver stack
+    if [ -f /lib/extra/mlog_stub.ko ] && [ -f /lib/extra/hi_kspi.ko ] && [ -f /lib/extra/hisi_spi2tty.ko ]; then
+        echo "[qhb-net] loading Zigbee SPI drivers..."
+        insmod /lib/extra/mlog_stub.ko 2>/dev/null || true
+        insmod /lib/extra/hi_kspi.ko 2>/dev/null || true
+        insmod /lib/extra/hisi_spi2tty.ko 2>/dev/null || true
+    fi
+
+    # Optional Wi-Fi (disabled by default for wired bridge operation)
+    if [ "$QHB_WIFI_ENABLE" = "1" ] && [ -f /lib/extra/rtl8192cd.ko ]; then
+        echo "[qhb-net] loading Realtek RTL8192ER WiFi drivers..."
+        if [ -f /lib/extra/qhb_wifi_shim.ko ]; then
+            insmod /lib/extra/qhb_wifi_shim.ko 2>/dev/null || true
+        fi
+        insmod /lib/extra/rtl8192cd.ko 2>/dev/null || true
+    fi
+
+    echo "[qhb-net] configuring br0 ($QHB_NET_MODE)..."
+    ifconfig eth0 hw ether "$BOARD_MAC" up 2>/dev/null || true
+    ifconfig nas1 hw ether "$BOARD_MAC" up 2>/dev/null || true
+    ifconfig eth0 0.0.0.0 up 2>/dev/null || true
+    ifconfig nas1 0.0.0.0 up 2>/dev/null || true
+
+    if command -v brctl >/dev/null 2>&1; then
+        brctl addbr br0 2>/dev/null || true
+        brctl setfd br0 0 2>/dev/null || true
+        brctl addif br0 eth0 2>/dev/null || true
+        brctl addif br0 nas1 2>/dev/null || true
+    else
+        ip link add name br0 type bridge 2>/dev/null || true
+        ip link set eth0 master br0 2>/dev/null || true
+        ip link set nas1 master br0 2>/dev/null || true
+    fi
+    sysctl -w net.ipv4.conf.all.promote_secondaries=1 >/dev/null 2>&1 || true
+    sysctl -w net.ipv4.conf.default.promote_secondaries=1 >/dev/null 2>&1 || true
+
+    ifconfig br0 hw ether "$BOARD_MAC" 2>/dev/null || true
+    ifconfig br0 "$BOARD_IP" netmask 255.255.255.0 up 2>/dev/null || true
+
+    if [ "$QHB_NET_MODE" = "static" ] && [ -n "${QHB_STATIC_GW:-}" ]; then
+        route add default gw "$QHB_STATIC_GW" dev br0 2>/dev/null || true
+        if [ -n "${QHB_STATIC_DNS:-}" ]; then
+            echo "nameserver $QHB_STATIC_DNS" > /etc/resolv.conf
+        fi
+    fi
+
+    # Register all three ends in CFE and bypass hardware NAPT on Port 8 (fid 268)
+    hi_cli /home/cli/api/intf/setip -v ifname nas1 ip "$BOARD_IP" 2>/dev/null || true
+    hi_cli /home/cli/api/intf/setmac -v ifname nas1 mac "$BOARD_MAC" 2>/dev/null || true
+    hi_cli /home/cli/api/intf/setfwd -v ifname nas1 fwd 2 2>/dev/null || true
+    hi_cli /home/cli/api/intf/setip -v ifname eth0 ip "$BOARD_IP" 2>/dev/null || true
+    hi_cli /home/cli/api/intf/setmac -v ifname eth0 mac "$BOARD_MAC" 2>/dev/null || true
+    hi_cli /home/cli/api/intf/setip -v ifname br0 ip "$BOARD_IP" 2>/dev/null || true
+    hi_cli /home/cli/api/intf/setmac -v ifname br0 mac "$BOARD_MAC" 2>/dev/null || true
+
+    hi_cli /home/cli/debug/sdk/sd56xx/level_0/flow/write_ifc_table_item -v fid 268 valid 1 eof 1 \
+        field_0 3 key_0 3758096384 mask_0 28 match_mode_0 1 \
+        field_1 0 key_1 0 mask_1 0 match_mode_1 0 \
+        field_2 46 key_2 0 mask_2 0 match_mode_2 0 \
+        igr 256 match_pri 2 forward_control 2 2>/dev/null || true
+
+    if [ "$QHB_NET_MODE" = "dhcp" ]; then
+        if [ -f /var/run/udhcpc.br0.pid ]; then
+            kill "$(cat /var/run/udhcpc.br0.pid 2>/dev/null)" 2>/dev/null || true
+            rm -f /var/run/udhcpc.br0.pid
+        fi
+        FALLBACK_IP="$BOARD_IP" BOARD_IP="$BOARD_IP" udhcpc -b -i br0 -B \
+            -x "hostname:$QHB_HOSTNAME" -F "$QHB_HOSTNAME" \
+            -p /var/run/udhcpc.br0.pid -s /usr/share/udhcpc/qhb-br0.script \
+            -t 5 -T 2 -A 10 2>/dev/null &
+    fi
+
+    # SSH host key persistence
+    mkdir -p /etc/dropbear /root/.ssh
+    chmod 700 /root /root/.ssh 2>/dev/null || true
+    if [ -f /root/.ssh/authorized_keys ]; then
+        chmod 600 /root/.ssh/authorized_keys
+    fi
+    if [ ! -f /etc/dropbear/dropbear_ed25519_host_key ]; then
+        dropbearkey -t ed25519 -f /etc/dropbear/dropbear_ed25519_host_key 2>/dev/null || true
+        dropbearkey -t rsa -f /etc/dropbear/dropbear_rsa_host_key 2>/dev/null || true
+    fi
+    ;;
+  stop)
+    if [ -f /var/run/udhcpc.br0.pid ]; then
+        kill "$(cat /var/run/udhcpc.br0.pid 2>/dev/null)" 2>/dev/null || true
+        rm -f /var/run/udhcpc.br0.pid
+    fi
+    killall udhcpc 2>/dev/null || true
+    ifconfig br0 down 2>/dev/null || true
+    if command -v brctl >/dev/null 2>&1; then
+        brctl delif br0 eth0 nas1 2>/dev/null || true
+        brctl delbr br0 2>/dev/null || true
+    else
+        ip link set eth0 nomaster 2>/dev/null || true
+        ip link set nas1 nomaster 2>/dev/null || true
+        ip link del br0 2>/dev/null || true
+    fi
+    ifconfig nas1 down 2>/dev/null || true
+    ifconfig eth0 down 2>/dev/null || true
+    ;;
+  *)
+    echo "Usage: $0 {start|stop}"
+    exit 1
+    ;;
+esac

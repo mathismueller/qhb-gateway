@@ -1,0 +1,32 @@
+#!/bin/sh
+# S51qhb-zigbeed: ASHv2-to-EZSP-SPI bridge (/dev/ttyspi0 -> TCP 2002)
+
+if [ -f /data/qhb.conf ]; then
+    # shellcheck source=/dev/null
+    . /data/qhb.conf
+fi
+[ "${QHB_ZIGBEE_ENABLE:-1}" = "1" ] || exit 0
+
+DAEMON="/usr/sbin/qhb-zigbeed"
+PIDFILE="/var/run/qhb-zigbeed.pid"
+PORT="${QHB_ZIGBEE_PORT:-2002}"
+
+case "${1:-}" in
+    start)
+        [ -x "$DAEMON" ] || exit 1
+        start-stop-daemon -S -q -b -m -p "$PIDFILE" --exec "$DAEMON" -- -d /dev/ttyspi0 -p "$PORT"
+        ;;
+    stop)
+        start-stop-daemon -K -q -p "$PIDFILE" 2>/dev/null || true
+        rm -f "$PIDFILE"
+        ;;
+    restart)
+        "$0" stop
+        sleep 1
+        "$0" start
+        ;;
+    *)
+        echo "Usage: $0 {start|stop|restart}"
+        exit 1
+        ;;
+esac

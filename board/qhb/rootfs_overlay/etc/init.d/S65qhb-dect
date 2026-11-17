@@ -1,0 +1,64 @@
+#!/bin/sh
+# S65qhb-dect: DECT ULE baseband (voiper) + MQTT bridge (qhb-dectd)
+
+if [ -f /data/qhb.conf ]; then
+    # shellcheck source=/dev/null
+    . /data/qhb.conf
+fi
+[ "${QHB_DECT_ENABLE:-1}" = "1" ] || exit 0
+
+DAEMON_BRIDGE="/usr/sbin/qhb-dectd"
+CONFIG="/data/dect.conf"
+PIDFILE_BRIDGE="/var/run/qhb-dectd.pid"
+LOG_VOIPER="/var/log/voiper.log"
+LOG_BRIDGE="/var/log/qhb-dectd.log"
+
+case "${1:-}" in
+    start)
+        mkdir -p /var/voice
+        if [ ! -f /var/voice/dectimage ] && [ -f /etc/dectimage.bin ]; then
+            cp -f /etc/dectimage.bin /var/voice/dectimage
+            chmod 755 /var/voice/dectimage
+        fi
+
+        if ! pidof voiper.real >/dev/null 2>&1 && [ -x /bin/voiper ]; then
+            /bin/voiper start 1 > "$LOG_VOIPER" 2>&1 &
+            TIMEOUT=10
+            while [ "$TIMEOUT" -gt 0 ]; do
+                if netstat -uan 2>/dev/null | grep -q ":3490 "; then
+                    break
+                fi
+                sleep 1
+                TIMEOUT=$((TIMEOUT - 1))
+            done
+        fi
+
+        if [ ! -f "$CONFIG" ] && [ -n "${QHB_MQTT_HOST:-}" ]; then
+            {
+                echo "mqtt_host=$QHB_MQTT_HOST"
+                echo "mqtt_port=${QHB_MQTT_PORT:-1883}"
+                [ -n "${QHB_MQTT_USER:-}" ] && echo "mqtt_user=$QHB_MQTT_USER"
+                [ -n "${QHB_MQTT_PASS:-}" ] && echo "mqtt_pass=$QHB_MQTT_PASS"
+            } > "$CONFIG"
+        fi
+
+        if [ -x "$DAEMON_BRIDGE" ] && ! pidof qhb-dectd >/dev/null 2>&1; then
+            start-stop-daemon -S -b -m -p "$PIDFILE_BRIDGE" -x /bin/sh -- \
+                -c "exec $DAEMON_BRIDGE -c $CONFIG >> $LOG_BRIDGE 2>&1"
+        fi
+        ;;
+    stop)
+        start-stop-daemon -K -p "$PIDFILE_BRIDGE" 2>/dev/null || killall qhb-dectd 2>/dev/null || true
+        rm -f "$PIDFILE_BRIDGE"
+        killall voiper.real 2>/dev/null || true
+        ;;
+    restart)
+        "$0" stop
+        sleep 1
+        "$0" start
+        ;;
+    *)
+        echo "Usage: $0 {start|stop|restart}"
+        exit 1
+        ;;
+esac

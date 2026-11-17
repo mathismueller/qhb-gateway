@@ -1,0 +1,94 @@
+#!/bin/sh
+# /usr/share/udhcpc/hb2-br0.script - DHCP client event handler for br0 (Ethernet bridge)
+# Keeps static fallback IP reachable to prevent lockout when disconnected from DHCP.
+
+[ -z "$1" ] && echo "Error: should be called from udhcpc" && exit 1
+
+ACTION="$1"
+RESOLV_CONF="/etc/resolv.conf"
+[ -e "$RESOLV_CONF" ] || touch "$RESOLV_CONF"
+[ -n "$broadcast" ] && BROADCAST="broadcast $broadcast"
+[ -n "$subnet" ] && NETMASK="netmask $subnet"
+FALLBACK_IP="${FALLBACK_IP:-192.168.0.5}"
+
+case "$ACTION" in
+    deconfig)
+        # Ensure interface is up. Do NOT wipe interface to 0.0.0.0 if fallback is needed,
+        # so existing SSH connections over the static IP stay alive while waiting for DHCP.
+        /sbin/ifconfig "$interface" up 2>/dev/null || true
+        cur_ip=$(ifconfig "$interface" 2>/dev/null | grep "inet addr:" | awk -F: '{print $2}' | awk '{print $1}')
+        if [ -z "$cur_ip" ]; then
+            /sbin/ifconfig "$interface" "$FALLBACK_IP" netmask 255.255.255.0 up 2>/dev/null || true
+        fi
+        echo "[hb2-br0] deconfig: interface $interface up (current IP: ${cur_ip:-$FALLBACK_IP})"
+        ;;
+
+    leasefail|nak)
+        echo "[hb2-br0] DHCP lease failed on $interface; ensuring LAN static $BOARD_IP and fallback $FALLBACK_IP are active"
+        cur_ip=$(ifconfig "$interface" 2>/dev/null | grep "inet addr:" | awk -F: '{print $2}' | awk '{print $1}')
+        if [ -z "$cur_ip" ] || [ "$cur_ip" = "0.0.0.0" ]; then
+            /sbin/ifconfig "$interface" "${BOARD_IP:-192.168.188.55}" netmask 255.255.255.0 up 2>/dev/null || true
+        fi
+        if [ -n "$FALLBACK_IP" ] && [ "$FALLBACK_IP" != "$cur_ip" ]; then
+            /sbin/ifconfig "${interface}:fallback" "$FALLBACK_IP" netmask 255.255.255.0 up 2>/dev/null || true
+        fi
+        [ -n "$GATEWAY" ] && route add default gw "$GATEWAY" dev "$interface" 2>/dev/null || true
+        ;;
+
+    renew|bound)
+        echo "[hb2-br0] DHCP lease $ACTION on $interface: IP=$ip mask=$subnet gw=$router"
+        # Assign primary DHCP IP to br0
+        /sbin/ifconfig "$interface" "$ip" $BROADCAST $NETMASK 2>/dev/null || true
+
+        # Add fallback alias if DHCP IP is different from fallback IP
+        if [ "$ip" != "$FALLBACK_IP" ]; then
+            /sbin/ifconfig "${interface}:fallback" "$FALLBACK_IP" netmask 255.255.255.0 up 2>/dev/null || true
+        fi
+
+        # Default route configuration
+        if [ -n "$router" ]; then
+            while route del default gw 0.0.0.0 dev "$interface" 2>/dev/null; do :; done
+            for r in $router; do
+                route add default gw "$r" dev "$interface" 2>/dev/null || true
+            done
+        fi
+
+        # DNS configuration
+        if [ -n "$dns" ]; then
+            TMPFILE=$(mktemp 2>/dev/null || echo "/tmp/resolv.conf.tmp")
+            [ -n "$domain" ] && echo "search $domain # $interface" > "$TMPFILE"
+            for ns in $dns; do
+                echo "nameserver $ns # $interface" >> "$TMPFILE"
+            done
+            cat "$TMPFILE" > "$RESOLV_CONF"
+            rm -f "$TMPFILE"
+        fi
+
+        # Notify CFE switch fabric of the new active IP
+        hi_cli /home/cli/api/intf/setip -v ifname nas1 ip "$ip" 2>/dev/null || true
+        hi_cli /home/cli/api/intf/setip -v ifname eth0 ip "$ip" 2>/dev/null || true
+        hi_cli /home/cli/api/intf/setip -v ifname br0 ip "$ip" 2>/dev/null || true
+
+        # Re-apply CFE NAPT bypass on Port 8: setip resets rule 268 to NAPT (forward_cmd 7),
+        # so we must restore forward_control 2 (CPU) to keep unicast IPv4 working.
+        hi_cli /home/cli/debug/sdk/sd56xx/level_0/flow/write_ifc_table_item -v fid 268 valid 1 eof 1 \
+            field_0 3 key_0 3758096384 mask_0 28 match_mode_0 1 \
+            field_1 0 key_1 0 mask_1 0 match_mode_1 0 \
+            field_2 46 key_2 0 mask_2 0 match_mode_2 0 \
+            igr 256 match_pri 2 forward_control 2 2>/dev/null || true
+
+        # Record lease info
+        cat << STATE > /var/run/br0.dhcp
+IP=$ip
+NETMASK=$subnet
+BROADCAST=$broadcast
+ROUTER=$router
+DNS=$dns
+DOMAIN=$domain
+LEASE=$lease
+UPDATED=$(date 2>/dev/null || echo "boot")
+STATE
+        ;;
+esac
+
+exit 0

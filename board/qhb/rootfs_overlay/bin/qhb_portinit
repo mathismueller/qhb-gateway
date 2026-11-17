@@ -1,0 +1,48 @@
+#!/bin/sh
+# Switch fabric & port initialization for HiSilicon SD5650T (Telekom Home Base 2)
+# Replicating stock hsanportinit behavior for single physical RJ-45 Ethernet port.
+
+export LD_LIBRARY_PATH=/lib/vendor:/lib:/usr/lib
+
+echo "[*] Initializing chip tag & VLAN security attributes via hi_xpon..."
+if [ -x /bin/hi_xpon ]; then
+    /bin/hi_xpon
+fi
+
+echo "[*] Configuring switch fabric & MDIO registers..."
+hi_cli /home/cli/api/ecs/mdio/write_exreg -v phy_addr 0x1 reg_addr 0x3183 data 0x1
+hi_cli /home/cli/api/ecs/mdio/write_exreg -v phy_addr 0x1 reg_addr 0x3180 data 0x1
+
+echo "[*] Enabling port isolation attribute..."
+hi_cli /home/cli/debug/test/port/set_isolate_attr -v enable 1
+
+echo "[*] Creating LAN switch ports (eth0.2..eth0.5)..."
+hi_cli /home/cli/api/intf/addroot -v fatherifname eth0 ifname eth0.2 porttype 1 phyport 12 allocwanid 1
+hi_cli /home/cli/api/ecs/kphy/mapping_write -v index 0 enable 1 phyid 1 vendor 0 macindex 4 devname eth0.2
+
+hi_cli /home/cli/api/intf/addroot -v fatherifname eth0 ifname eth0.3 porttype 1 phyport 11 allocwanid 1
+hi_cli /home/cli/api/ecs/kphy/mapping_write -v index 1 enable 1 phyid 2 vendor 0 macindex 3 devname eth0.3
+
+hi_cli /home/cli/api/intf/addroot -v fatherifname eth0 ifname eth0.4 porttype 1 phyport 10 allocwanid 1
+hi_cli /home/cli/api/ecs/kphy/mapping_write -v index 2 enable 1 phyid 3 vendor 0 macindex 2 devname eth0.4
+
+hi_cli /home/cli/api/intf/addroot -v fatherifname eth0 ifname eth0.5 porttype 1 phyport 9 allocwanid 1
+hi_cli /home/cli/api/ecs/kphy/mapping_write -v index 3 enable 1 phyid 4 vendor 0 macindex 1 devname eth0.5
+
+echo "[*] Creating main uplink interface nas1 (phyport 8, internal PHY 5)..."
+hi_cli /home/cli/api/intf/addroot -v fatherifname eth0 ifname nas1 porttype 2 phyport 8 allocwanid 0
+hi_cli /home/cli/api/ecs/kphy/mapping_write -v index 4 enable 1 phyid 5 vendor 0 macindex 0 devname nas1
+
+echo "[*] Bringing up eth0..."
+ifconfig eth0 up
+if [ -x /bin/ethcmd ]; then
+    /bin/ethcmd eth0 lanchip disable 2>/dev/null || true
+fi
+
+echo "[*] Configuring inner MDIO & link limits (disable gigabit adv on PHY 5)..."
+hi_cli /home/cli/api/ecs/mdio/write_inner -v phy_addr 0x5 reg_addr 0x9 data 0x0
+hi_cli /home/cli/api/srv/set_linkmax -v type 0 max 8192
+hi_cli /home/cli/debug/test/power/set_pcie_status -v id 1 mode 0
+hi_cli /home/cli/debug/test/power/set_dsl_status -v mode 0
+
+echo "[+] Switch port initialization completed."
