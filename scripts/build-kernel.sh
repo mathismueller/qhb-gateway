@@ -7,6 +7,7 @@ LINUX_SRC="$ROOT/linux"
 KBUILD_OUT="${QHB_KBUILD_OUT:-$ROOT/output/linux}"
 IMAGES_DIR="${QHB_IMAGES_DIR:-$ROOT/output/images}"
 CROSS_COMPILE="${CROSS_COMPILE:-arm-linux-gnueabi-}"
+KBUILD_CC="${KBUILD_CC:-${CROSS_COMPILE}gcc}"
 RESCUE=0
 
 while [ "$#" -gt 0 ]; do
@@ -51,12 +52,12 @@ fi
 
 JOBS="$(nproc 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)"
 
-yes "" | make -C "$LINUX_SRC" O="$KBUILD_OUT" ARCH=arm CROSS_COMPILE="$CROSS_COMPILE" oldconfig
-make -C "$LINUX_SRC" O="$KBUILD_OUT" ARCH=arm CROSS_COMPILE="$CROSS_COMPILE" -j"$JOBS" zImage
-make -C "$LINUX_SRC" O="$KBUILD_OUT" ARCH=arm CROSS_COMPILE="$CROSS_COMPILE" -j1 uImage
+(yes "" || true) | make -C "$LINUX_SRC" O="$KBUILD_OUT" ARCH=arm CROSS_COMPILE="$CROSS_COMPILE" CC="$KBUILD_CC" oldconfig
+make -C "$LINUX_SRC" O="$KBUILD_OUT" ARCH=arm CROSS_COMPILE="$CROSS_COMPILE" CC="$KBUILD_CC" -j"$JOBS" zImage
+make -C "$LINUX_SRC" O="$KBUILD_OUT" ARCH=arm CROSS_COMPILE="$CROSS_COMPILE" CC="$KBUILD_CC" -j1 uImage
 
 # Build out-of-tree mlog_stub.ko
-make -C "$LINUX_SRC" O="$KBUILD_OUT" ARCH=arm CROSS_COMPILE="$CROSS_COMPILE" \
+make -C "$LINUX_SRC" O="$KBUILD_OUT" ARCH=arm CROSS_COMPILE="$CROSS_COMPILE" CC="$KBUILD_CC" \
     M="$ROOT/src/mlog_stub" modules
 
 cp "$KBUILD_OUT/arch/arm/boot/uImage" "$IMAGES_DIR/uImage"

@@ -19,7 +19,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             bc bison build-essential cpio curl file flex g++ gcc \
-            gcc-arm-linux-gnueabi git libncurses-dev libssl-dev make \
+            gcc-arm-linux-gnueabi gcc-12-arm-linux-gnueabi git libncurses-dev libssl-dev make \
             patch rsync u-boot-tools unzip wget xz-utils
 
       - name: Cache Buildroot downloads & ccache
@@ -42,6 +42,8 @@ jobs:
         run: ./scripts/build.sh
 
       - name: Build Linux uImage + mlog_stub.ko
+        env:
+          KBUILD_CC: arm-linux-gnueabi-gcc-12
         run: ./scripts/build-kernel.sh
 
       - name: Upload firmware artifacts
