@@ -11,6 +11,7 @@ if [ -f /data/qhb.conf ]; then
     . /data/qhb.conf
 fi
 
+QHB_STATIC_IP="${QHB_STATIC_IP:-}"
 BOARD_IP="${QHB_STATIC_IP%%/*}"
 BOARD_IP="${BOARD_IP:-192.168.0.5}"
 BOARD_MAC="${QHB_MAC:-00:e0:fc:55:55:58}"
@@ -116,7 +117,8 @@ case "${1:-}" in
             kill "$(cat /var/run/udhcpc.br0.pid 2>/dev/null)" 2>/dev/null || true
             rm -f /var/run/udhcpc.br0.pid
         fi
-        FALLBACK_IP="$BOARD_IP" BOARD_IP="$BOARD_IP" udhcpc -b -i br0 -B \
+        export FALLBACK_IP="$BOARD_IP" BOARD_IP
+        udhcpc -b -i br0 -B \
             -x "hostname:$QHB_HOSTNAME" -F "$QHB_HOSTNAME" \
             -p /var/run/udhcpc.br0.pid -s /usr/share/udhcpc/qhb-br0.script \
             -t 5 -T 2 -A 10 2>/dev/null &

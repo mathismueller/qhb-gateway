@@ -54,10 +54,10 @@ if [ -n "$MTD0_BIN" ]; then
     jefferson "$MTD0_BIN" -d "$MTD0_DIR"
 fi
 
-[ -n "$MTD0_DIR" ] && [ -d "$MTD0_DIR" ] || {
+if [ -z "$MTD0_DIR" ] || [ ! -d "$MTD0_DIR" ]; then
     echo "Error: provide --bin <mtd0_rootfs.bin> or --mtd0 <unpacked_mtd0_dir>" >&2
     usage
-}
+fi
 
 # All vendor modules/libs live in mtd0 itself; allow optional --initramfs override
 LIB_SRC="${INITRAMFS_DIR:-$MTD0_DIR}"
@@ -141,6 +141,26 @@ if [ -f "$MTD0_DIR/etc/dectimage.bin" ]; then
 fi
 if [ -f "$MTD0_DIR/bin/voiper" ]; then
     cp "$MTD0_DIR/bin/voiper" "$OUT_DIR/bin/voiper.real"
+    python3 - "$OUT_DIR/bin/voiper.real" <<'PY'
+import sys
+path = sys.argv[1]
+with open(path, "r+b") as f:
+    data = bytearray(f.read())
+    target = b"/lib/ld-uClibc.so.0"
+    pos = data.find(target)
+    if pos != -1:
+        repl = b"/lib/vendor/ld.so\x00"
+        repl = repl + b"\x00" * (len(target) - len(repl))
+        data[pos:pos + len(target)] = repl
+        f.seek(0)
+        f.write(data)
+        print("[qhb] Patched voiper.real INTERP -> /lib/vendor/ld.so")
+PY
+    cat > "$OUT_DIR/bin/voiper" <<'EOF'
+#!/bin/sh
+exec env LD_LIBRARY_PATH=/lib/vendor LD_PRELOAD=/lib/vendor/libvoiper_shim.so /bin/voiper.real "$@"
+EOF
+    chmod +x "$OUT_DIR/bin/voiper" "$OUT_DIR/bin/voiper.real"
 fi
 
 echo "[qhb] Vendor overlay staged at $OUT_DIR"

@@ -1,5 +1,6 @@
 #!/bin/sh
-# /usr/share/udhcpc/hb2-br0.script - DHCP client event handler for br0 (Ethernet bridge)
+# shellcheck disable=SC2154,SC2086
+# /usr/share/udhcpc/qhb-br0.script - DHCP client event handler for br0 (Ethernet bridge)
 # Keeps static fallback IP reachable to prevent lockout when disconnected from DHCP.
 
 [ -z "$1" ] && echo "Error: should be called from udhcpc" && exit 1
@@ -32,7 +33,9 @@ case "$ACTION" in
         if [ -n "$FALLBACK_IP" ] && [ "$FALLBACK_IP" != "$cur_ip" ]; then
             /sbin/ifconfig "${interface}:fallback" "$FALLBACK_IP" netmask 255.255.255.0 up 2>/dev/null || true
         fi
-        [ -n "$GATEWAY" ] && route add default gw "$GATEWAY" dev "$interface" 2>/dev/null || true
+        if [ -n "${GATEWAY:-}" ]; then
+            route add default gw "$GATEWAY" dev "$interface" 2>/dev/null || true
+        fi
         ;;
 
     renew|bound)
