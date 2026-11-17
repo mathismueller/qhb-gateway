@@ -1,0 +1,4 @@
+[submodule "linux"]
+	path = linux
+	url = https://github.com/mathismueller/linux.git
+	branch = qhb/3.4.11
