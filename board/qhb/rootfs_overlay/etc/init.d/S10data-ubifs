@@ -1,6 +1,6 @@
 #!/bin/sh
-# Mount persistent /data on mtd17 (UBIFS) with safe tmpfs fallback,
-# seed /data/qhb.conf, and link Dropbear SSH keys to /data/ssh.
+# Mount persistent /data on mtd17 (UBIFS) if already provisioned,
+# otherwise fall back to tmpfs (guarantees zero NAND writes during TFTP testing).
 
 DATA_MTD_NAME="bundles"
 DATA_DIR="/data"
@@ -10,26 +10,26 @@ find_mtd_index() {
     awk -F: -v name="\"$1\"" '$0 ~ name {gsub(/mtd/, "", $1); print $1; exit}' /proc/mtd
 }
 
+mount_tmpfs() {
+    mount -t tmpfs -o size=16m tmpfs "$DATA_DIR"
+}
+
 start() {
     mkdir -p "$DATA_DIR" /var/log /var/run
 
-    MTD_IDX="$(find_mtd_index "$DATA_MTD_NAME" || true)"
-    if [ -n "$MTD_IDX" ] && command -v ubiattach >/dev/null 2>&1; then
-        if ubiattach -m "$MTD_IDX" -d 0 >/dev/null 2>&1; then
-            if [ ! -e /dev/ubi0_0 ] && command -v ubimkvol >/dev/null 2>&1; then
-                ubimkvol /dev/ubi0 -N qhb_data -m >/dev/null 2>&1 || true
-            fi
-            if [ -e /dev/ubi0_0 ]; then
-                mount -t ubifs ubi0:qhb_data "$DATA_DIR" || \
-                    mount -t tmpfs -o size=16m tmpfs "$DATA_DIR"
+    if grep -q "qhb.tmpfs=1" /proc/cmdline 2>/dev/null; then
+        mount_tmpfs
+    else
+        MTD_IDX="$(find_mtd_index "$DATA_MTD_NAME" || true)"
+        if [ -n "$MTD_IDX" ] && command -v ubiattach >/dev/null 2>&1; then
+            if ubiattach -m "$MTD_IDX" -d 0 >/dev/null 2>&1 && [ -e /dev/ubi0_0 ]; then
+                mount -t ubifs ubi0:qhb_data "$DATA_DIR" || mount_tmpfs
             else
-                mount -t tmpfs -o size=16m tmpfs "$DATA_DIR"
+                mount_tmpfs
             fi
         else
-            mount -t tmpfs -o size=16m tmpfs "$DATA_DIR"
+            mount_tmpfs
         fi
-    else
-        mount -t tmpfs -o size=16m tmpfs "$DATA_DIR"
     fi
 
     mkdir -p "$DATA_DIR/ssh" "$DATA_DIR/pairing"
@@ -37,7 +37,7 @@ start() {
         cp "$DEFAULT_CONF" "$DATA_DIR/qhb.conf"
     fi
 
-    # Persist Dropbear host keys across reboots
+    # Persist Dropbear host keys across reboots when /data is UBIFS
     rm -rf /etc/dropbear
     ln -s "$DATA_DIR/ssh" /etc/dropbear
 }
