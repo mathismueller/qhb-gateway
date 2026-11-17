@@ -11,13 +11,16 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
-      - name: Install Buildroot dependencies
+      - name: Install Buildroot & kernel dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
             bc bison build-essential cpio curl file flex g++ gcc \
-            git libncurses-dev libssl-dev make patch rsync unzip wget xz-utils
+            gcc-arm-linux-gnueabi git libncurses-dev libssl-dev make \
+            patch rsync u-boot-tools unzip wget xz-utils
 
       - name: Cache Buildroot downloads & ccache
         uses: actions/cache@v4
@@ -38,11 +41,17 @@ jobs:
           BR2_CCACHE_DIR: "${{ github.workspace }}/.ccache"
         run: ./scripts/build.sh
 
-      - name: Upload rootfs artifacts
+      - name: Build Linux uImage + mlog_stub.ko
+        run: ./scripts/build-kernel.sh
+
+      - name: Upload firmware artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: qhb-rootfs-${{ github.ref_name }}
+          name: qhb-firmware-${{ github.ref_name }}
           path: |
+            output/images/uImage
+            output/images/mlog_stub.ko
             output/images/rootfs.cpio.xz
             output/images/rootfs.tar.gz
             output/images/SHA256SUMS
+            output/images/SHA256SUMS.kernel
