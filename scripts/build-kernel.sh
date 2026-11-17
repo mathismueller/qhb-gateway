@@ -51,7 +51,7 @@ fi
 
 JOBS="$(nproc 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)"
 
-make -C "$LINUX_SRC" O="$KBUILD_OUT" ARCH=arm CROSS_COMPILE="$CROSS_COMPILE" olddefconfig
+yes "" | make -C "$LINUX_SRC" O="$KBUILD_OUT" ARCH=arm CROSS_COMPILE="$CROSS_COMPILE" oldconfig
 make -C "$LINUX_SRC" O="$KBUILD_OUT" ARCH=arm CROSS_COMPILE="$CROSS_COMPILE" -j"$JOBS" zImage
 make -C "$LINUX_SRC" O="$KBUILD_OUT" ARCH=arm CROSS_COMPILE="$CROSS_COMPILE" -j1 uImage
 
