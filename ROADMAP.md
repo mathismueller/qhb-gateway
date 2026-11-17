@@ -91,9 +91,9 @@ Zero smart-home application logic runs on the box; all protocols are thin, stand
 | Subsystem | Port / Transport | Protocol | Consumer |
 |---|---|---|---|
 | **Zigbee (`EM3587`)** | TCP `2002` | ASHv2 over TCP (`qhb-zigbeed`) | Home Assistant ZHA (`socket://<ip>:2002`) |
-| **HomeMatic (`Si1002`)** | TCP `3008` | `HB-RF-ETH` (`hb2-rfe-daemon`) | RaspberryMatic / OpenCCU / debmatic |
+| **HomeMatic (`Si1002`)** | TCP `3008` | `HB-RF-ETH` (`qhb-rfe-daemon`) | RaspberryMatic / OpenCCU / debmatic |
 | **Bluetooth (`RTL8761AUV`)** | TCP `6053` | ESPHome Bluetooth Proxy (`qhb-btproxy`) | Home Assistant ESPHome integration |
-| **DECT ULE (`DCX81`)** | MQTT | MQTT + HA Discovery (`hb2-dectd`) | Home Assistant MQTT integration |
+| **DECT ULE (`DCX81`)** | MQTT | MQTT + HA Discovery (`qhb-dectd`) | Home Assistant MQTT integration |
 | **Future USB Dongles** | TCP (optional) | Raw `ser2net` / RFC 2217 | Z2M / OTBR (Thread) via USB 2.0 ports |
 
 ---
@@ -101,33 +101,32 @@ Zero smart-home application logic runs on the box; all protocols are thin, stand
 ## 5. Phased Execution Roadmap
 
 ### Phase 0: Repository Bootstrap & Migration (Clean Slate)
-- [ ] Initialize `qhb-gateway` git repo with `BR2_EXTERNAL` skeleton (`external.desc`, `external.mk`, `Config.in`, `configs/qhb_defconfig`).
-- [ ] Pin `linux` submodule (`neuschaefer/linux` `vendor/telekom-homebase2` + local GCC/ASAN/build fixes as clean patches).
-- [ ] Migrate only the clean, final daemon sources (`qhb-zigbeed`, `qhb-btproxy`, `hb2-dectd`, `hb2-rfe-daemon`, `mlog_stub`) from `quivcon_homebase_2_reverse_engineering` into `src/` + `package/*/`.
-- [ ] Write `scripts/extract-vendor.sh` to extract the minimal vendor island (`.ko` modules, `voiper.real`, `dectimage.bin`, `hi_cli`, `ld-uClibc.so.0`) from a stock `mtd0` image into `vendor/`.
-- [ ] Document NAND layout & recovery (`blpatch-standalone.bin`) in `docs/FLASH_LAYOUT.md`.
+- [x] Initialize `qhb-gateway` git repo with `BR2_EXTERNAL` skeleton (`external.desc`, `external.mk`, `Config.in`, `configs/qhb_defconfig`).
+- [x] Fork `neuschaefer/linux` to `mathismueller/linux` (`qhb/3.4.11` with local build/GCC fixes) and pin `linux/` submodule.
+- [x] Migrate clean daemon sources (`qhb-zigbeed`, `qhb-btproxy`, `qhb-dectd`, `qhb-rfe-daemon`, `mlog_stub`) from `quivcon_homebase_2_reverse_engineering` into `src/` + `package/*/`.
+- [x] Write `scripts/extract-vendor.sh` (`--bin` raw `mtd0_rootfs.bin` via `jefferson` or `--mtd0`) to stage vendor island into `vendor/rootfs/`.
+- [x] Document NAND layout & recovery (`blpatch-standalone.bin`) in `docs/FLASH_LAYOUT.md`.
 
 ### Phase 1: Self-Contained Flashable Buildroot Image (v1.0-rc1)
-- [ ] Configure `board/qhb/linux.config` to embed Buildroot's `rootfs.cpio.xz` via `CONFIG_INITRAMFS_SOURCE` (eliminating the USB stick requirement).
-- [ ] Implement `/etc/init.d/S10data-ubifs` to attach UBI on `mtd17`, mount `/data` cleanly (auto-formatting on first boot with a safety guard), and fall back gracefully to `tmpfs` if UBIFS mount fails.
-- [ ] Implement `/data/qhb.conf` loader with zero-config defaults (DHCP on `br0`, mDNS advertisement `_qhb-gateway._tcp`, Wi-Fi disabled).
+- [x] Wire `scripts/build-kernel.sh` + `board/qhb/linux.config` to embed Buildroot's `rootfs.cpio` into `uImage` (`CONFIG_INITRAMFS_SOURCE`) and compile `mlog_stub.ko`.
+- [x] Implement `/etc/init.d/S10data-ubifs` to mount pre-provisioned `ubi0:qhb_data` on `mtd17` and fall back to `tmpfs` (zero-write safe during TFTP testing).
+- [x] Implement `/data/qhb.conf` loader + migrated init scripts (`S40qhb-net` … `S65qhb-dect`) with zero-config DHCP defaults and Wi-Fi off by default.
 - [ ] Verify all 4 radios + Dropbear SSH + `tmpfs` logging on real hardware via TFTP `atp.img` (zero USB stick attached).
-- [ ] Flash `uImage` to `mtd11` and verify cold, unattended power-on boot.
+- [ ] Provision `mtd17` UBIFS (`ubiformat`/`ubimkvol`), flash `uImage` to `mtd11`, and verify cold unattended power-on boot.
 
 ### Phase 2: CI Pipeline & Automated Verification (v1.0)
-- [ ] **PR Workflow (`.github/workflows/pr-checks.yml`):**
-  - Host-compiled unit & framing tests for `qhb-zigbeed` (ASHv2 <-> EZSP-SPI mock), `hb2-dectd` (UDP/MQTT payload parsing), `hb2-rfe-daemon` (0xFC escaping/reassembly), and `qhb-btproxy`.
-  - `shellcheck` on all init/extract/flash scripts and Buildroot `defconfig` sanity checks.
-- [ ] **Release Workflow (`.github/workflows/build-release.yml`):**
-  - Cached Buildroot `BR2_EXTERNAL` + `uImage` build on `main` and version tags (`v*`).
-  - Support optional encrypted/secret vendor tarball injection in private forks for ready-to-flash release artifacts; otherwise publish open-source base `rootfs.cpio.xz` + `uImage` (kernel-only) + checksums.
+- [x] **PR Workflow (`.github/workflows/pr-checks.yml`):**
+  - `shellcheck` on all scripts & init scripts, `uv` Python syntax check, and host-compiled `gcc` checks for all 4 daemons.
+  - [ ] Add host unit & framing tests for `qhb-zigbeed`, `qhb-dectd`, `qhb-rfe-daemon`, and `qhb-btproxy`.
+- [x] **Release Workflow (`.github/workflows/build-release.yml`):**
+  - Cached Buildroot `BR2_EXTERNAL` + `uImage` + `mlog_stub.ko` build on `main` and version tags (`v*`).
 - [ ] **Local Hardware-in-the-Loop (`scripts/hil-smoke-test.py`):**
-  - Automated script: power-cycle via webhook → TFTP boot `atp.img` → wait for serial login → verify `br0` IP, SSH, UBIFS `/data` mount, and TCP `2002`/`3008`/`6053` listeners + MQTT heartbeat.
+  - Script implemented; run end-to-end against physical board over TFTP + serial + SSH.
 
 ### Phase 3: Kernel Hardening & Stabilization (v1.1)
-- [ ] Backport `3.4.11 → 3.4.113` stable security fixes onto the pinned `linux/` tree while verifying 100% ABI compatibility with vendor `.ko` modules.
+- [ ] Backport `3.4.11 → 3.4.113` stable security fixes onto `mathismueller/linux` (`qhb/3.4.11`) while verifying 100% ABI compatibility with vendor `.ko` modules.
 - [ ] Strip unused kernel protocols/filesystems and lock down default firewall rules (expose only SSH + configured radio bridge ports).
-- [ ] Add A/B safe OTA flash script (`scripts/flash-nand.sh`) so future updates can be flashed over SSH without serial access.
+- [x] Add A/B safe NAND flash script (`scripts/flash-nand.sh` with GPIO 72 WP unlock + SHA-256 readback verify).
 
 ### Phase 4: Blob Elimination (Long-Term Independence)
 - [ ] Replace `hi_kspi.ko` + `hisi_spi2tty.ko` with an open SD5650T SPI driver (or `spidev` + userspace EZSP-SPI directly inside `qhb-zigbeed`).
