@@ -16,8 +16,8 @@ See [ROADMAP.md](ROADMAP.md) for the full architecture, flash layout, and phased
 ## Quick Start
 
 ```bash
-# 1. (Optional) Extract proprietary vendor blobs from your stock NAND dump
-./scripts/extract-vendor.sh --mtd0 /path/to/mtd0 --initramfs /path/to/initramfs_root
+# 1. (Optional) Extract proprietary vendor blobs directly from a stock mtd0_rootfs.bin dump
+./scripts/extract-vendor.sh --bin /path/to/mtd0_rootfs.bin
 
 # 2. Fetch Buildroot 2025.02.18 LTS & build qhb_defconfig
 ./scripts/build.sh
